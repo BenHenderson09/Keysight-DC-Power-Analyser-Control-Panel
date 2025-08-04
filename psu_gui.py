@@ -2,15 +2,14 @@ import sys
 import pyvisa
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QGridLayout, QDoubleSpinBox, QMessageBox, QGroupBox
+    QHBoxLayout, QGridLayout, QDoubleSpinBox, QMessageBox, QGroupBox, QSizePolicy
 )
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QColor, QPalette, QFont
+from PyQt6.QtCore import QTimer, Qt
 
 
 GPIB_ADDRESS = "GPIB0::5::INSTR"
 
-# Channel-specific background colors
 CHANNEL_COLORS = {
     1: "#FFF59D",  # Yellow
     2: "#A5D6A7",  # Green
@@ -20,8 +19,6 @@ CHANNEL_COLORS = {
 
 
 class ChannelControl(QGroupBox):
-    """Control block for one channel."""
-
     def __init__(self, instrument, channel):
         super().__init__(f"Channel {channel}")
         self.instrument = instrument
@@ -33,35 +30,75 @@ class ChannelControl(QGroupBox):
         self.setAutoFillBackground(True)
         self.setPalette(palette)
 
-        # Input controls
+        # Fonts
+        label_font = QFont("Arial", 14)
+        input_font = QFont("Arial", 16)
+        output_font = QFont("Courier New", 18, QFont.Weight.Bold)
+
+        # Voltage input
+        self.voltage_label = QLabel("Voltage:")
+        self.voltage_label.setFont(label_font)
         self.voltage_input = QDoubleSpinBox()
         self.voltage_input.setRange(0, 100)
         self.voltage_input.setDecimals(3)
         self.voltage_input.setSuffix(" V")
+        self.voltage_input.setFont(input_font)
+        self.voltage_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
+        # Current limit input
+        self.current_label = QLabel("Current Limit:")
+        self.current_label.setFont(label_font)
         self.current_input = QDoubleSpinBox()
         self.current_input.setRange(0, 10)
         self.current_input.setDecimals(3)
         self.current_input.setSuffix(" A")
+        self.current_input.setFont(input_font)
+        self.current_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
+        # Set button
         self.set_button = QPushButton("Set")
+        self.set_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self.set_button.clicked.connect(self.apply_settings)
+        self.set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        self.output_label = QLabel("Measured: --- V, --- A\nLimit: --- A")
+        # Output label for measurements
+        self.output_label = QLabel("Measured:\n--- V\n--- A\n\nLimit:\n--- A")
+        self.output_label.setFont(output_font)
+        self.output_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.output_label.setStyleSheet("background-color: white; border: 1px solid gray;")
+        self.output_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+        # Layout setup
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Voltage:"))
-        layout.addWidget(self.voltage_input)
-        layout.addWidget(QLabel("Current Limit:"))
-        layout.addWidget(self.current_input)
-        layout.addWidget(self.set_button)
+
+        # Voltage input layout
+        volt_layout = QHBoxLayout()
+        volt_layout.addWidget(self.voltage_label)
+        volt_layout.addWidget(self.voltage_input)
+        layout.addLayout(volt_layout)
+
+        # Current input layout
+        curr_layout = QHBoxLayout()
+        curr_layout.addWidget(self.current_label)
+        curr_layout.addWidget(self.current_input)
+        layout.addLayout(curr_layout)
+
+        # Set button centered
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.set_button)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # Measurement display (big box)
         layout.addWidget(self.output_label)
+
         self.setLayout(layout)
 
-        # Timer for continuous readings
+        # Timer for continuous update
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_readings)
-        self.timer.start(1000)  # Update every second
+        self.timer.start(1000)  # update every second
 
     def apply_settings(self):
         try:
@@ -81,16 +118,16 @@ class ChannelControl(QGroupBox):
             limit = float(self.instrument.query(f"CURR? (@{self.channel})").strip())
 
             self.output_label.setText(
-                f"Measured: {v:.3f} V, {c:.3f} A\nLimit: {limit:.3f} A"
+                f"Measured:\n{v:7.3f} V\n{c:7.3f} A\n\nLimit:\n{limit:7.3f} A"
             )
         except Exception as e:
-            self.output_label.setText(f"Read error: {e}")
+            self.output_label.setText(f"Read error:\n{e}")
 
 
 class PowerSupplyGUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Keysight Power Supply - 4 Channel Monitor")
+        self.setWindowTitle("Ben's PSU Control Panel")
 
         try:
             self.rm = pyvisa.ResourceManager()
@@ -108,7 +145,15 @@ class PowerSupplyGUI(QWidget):
             control = ChannelControl(self.instrument, channel=i)
             layout.addWidget(control, *pos)
 
+        # Make the layout scalable
+        layout.setRowStretch(0, 1)
+        layout.setRowStretch(1, 1)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
+
         self.setLayout(layout)
+        self.showMaximized()
+
 
     def closeEvent(self, event):
         try:
