@@ -63,12 +63,11 @@ class ChannelControl(QGroupBox):
         self.set_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         # ON/OFF toggle button
-        self.toggle_button = QPushButton("OFF")
+        self.toggle_button = QPushButton()
         self.toggle_button.setCheckable(True)
         self.toggle_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        self.toggle_button.setStyleSheet("background-color: red; color: white;")
-        self.toggle_button.clicked.connect(self.toggle_output)
         self.toggle_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.toggle_button.clicked.connect(self.toggle_output)
 
         # Output label for measurements
         self.output_label = QLabel("Measured:\n--- V\n--- A\n\nLimit:\n--- A")
@@ -103,6 +102,9 @@ class ChannelControl(QGroupBox):
 
         self.setLayout(layout)
 
+        # Initialize ON/OFF button state from instrument
+        self.query_output_state()
+
         # Timer for continuous update
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_readings)
@@ -123,16 +125,34 @@ class ChannelControl(QGroupBox):
         try:
             if self.toggle_button.isChecked():
                 self.instrument.write(f"OUTP ON, (@{self.channel})")
-                self.toggle_button.setText("ON")
-                self.toggle_button.setStyleSheet("background-color: green; color: white;")
                 self.output_on = True
             else:
                 self.instrument.write(f"OUTP OFF, (@{self.channel})")
-                self.toggle_button.setText("OFF")
-                self.toggle_button.setStyleSheet("background-color: red; color: white;")
                 self.output_on = False
+            self.update_toggle_button()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"CH{self.channel} output toggle error: {e}")
+
+    def query_output_state(self):
+        """Check PSU to see if output is ON or OFF at startup"""
+        try:
+            state = int(self.instrument.query(f"OUTP? (@{self.channel})").strip())
+            self.output_on = bool(state)
+            self.toggle_button.setChecked(self.output_on)
+            self.update_toggle_button()
+        except Exception as e:
+            # fallback to OFF if query fails
+            self.output_on = False
+            self.toggle_button.setChecked(False)
+            self.update_toggle_button()
+
+    def update_toggle_button(self):
+        if self.output_on:
+            self.toggle_button.setText("ON")
+            self.toggle_button.setStyleSheet("background-color: green; color: white;")
+        else:
+            self.toggle_button.setText("OFF")
+            self.toggle_button.setStyleSheet("background-color: red; color: white;")
 
     def update_readings(self):
         try:
